@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CarotidAI — Analyze Image</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=DM+Sans:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg: #020812;
+      --surface: #060f1e;
+      --card: #0a1628;
+      --border: rgba(0,180,255,0.15);
+      --cyan: #00b4ff;
+      --cyan-dim: rgba(0,180,255,0.08);
+      --red: #ff3860;
+      --green: #00e5a0;
+      --text: #e8f4ff;
+      --muted: #5a7a9a;
+      --glow: 0 0 30px rgba(0,180,255,0.25);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: 'DM Sans', sans-serif; font-weight: 300;
+      min-height: 100vh; overflow-x: hidden; cursor: none;
+    }
+    .cursor { position: fixed; width: 10px; height: 10px; background: var(--cyan); border-radius: 50%; pointer-events: none; z-index: 9999; transform: translate(-50%,-50%); mix-blend-mode: screen; transition: transform 0.1s; }
+    .cursor-ring { position: fixed; width: 36px; height: 36px; border: 1px solid rgba(0,180,255,0.5); border-radius: 50%; pointer-events: none; z-index: 9998; transform: translate(-50%,-50%); transition: transform 0.15s ease; }
+
+    .grid-bg {
+      position: fixed; inset: 0; z-index: 0;
+      background-image: linear-gradient(rgba(0,180,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(0,180,255,0.04) 1px, transparent 1px);
+      background-size: 60px 60px;
+      animation: gridShift 20s linear infinite;
+    }
+    @keyframes gridShift { 0% { background-position: 0 0; } 100% { background-position: 60px 60px; } }
+
+    .orb { position: fixed; border-radius: 50%; filter: blur(80px); pointer-events: none; z-index: 0; }
+    .orb-1 { width: 350px; height: 350px; background: rgba(0,180,255,0.07); top: -80px; right: -80px; }
+    .orb-2 { width: 250px; height: 250px; background: rgba(0,229,160,0.05); bottom: 50px; left: -60px; }
+
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 60px;
+      background: rgba(2,8,18,0.85); backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-logo { font-family: 'Orbitron', monospace; font-weight: 900; font-size: 1.1rem; color: var(--cyan); letter-spacing: 3px; text-decoration: none; }
+    .nav-logo span { color: var(--red); }
+    .nav-back { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 0.75rem; letter-spacing: 2px; text-transform: uppercase; text-decoration: none; transition: color 0.3s; }
+    .nav-back:hover { color: var(--cyan); }
+    .nav-back svg { width: 16px; height: 16px; }
+
+    /* PAGE LAYOUT */
+    .page {
+      position: relative; z-index: 1;
+      min-height: 100vh;
+      padding: 120px 60px 80px;
+      max-width: 1300px; margin: 0 auto;
+    }
+
+    .page-header {
+      text-align: center; margin-bottom: 70px;
+      animation: fadeUp 0.7s ease both;
+    }
+    .page-tag {
+      display: inline-flex; align-items: center; gap: 8px;
+      border: 1px solid rgba(0,180,255,0.3); background: rgba(0,180,255,0.05);
+      padding: 6px 18px; border-radius: 2px;
+      font-size: 0.65rem; letter-spacing: 3px; text-transform: uppercase;
+      color: var(--cyan); margin-bottom: 24px;
+    }
+    .page-tag::before { content: ''; width: 6px; height: 6px; background: var(--cyan); border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.3;transform:scale(0.6)} }
+    .page-header h1 { font-family: 'Orbitron', monospace; font-size: clamp(1.8rem, 3.5vw, 3rem); font-weight: 900; margin-bottom: 16px; }
+    .page-header p { color: var(--muted); font-size: 0.9rem; max-width: 500px; margin: 0 auto; line-height: 1.7; }
+
+    @keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+
+    /* MAIN GRID */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      align-items: start;
+    }
+
+    /* UPLOAD PANEL */
+    .upload-panel {
+      border: 1px solid var(--border);
+      background: var(--card);
+      padding: 50px;
+      animation: fadeUp 0.7s 0.1s ease both;
+      position: relative; overflow: hidden;
+    }
+    .upload-panel::before {
+      content: ''; position: absolute;
+      top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, var(--cyan), var(--green), var(--cyan));
+      background-size: 200% 100%;
+      animation: shimmer 3s linear infinite;
+    }
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+    .panel-label {
+      font-size: 0.6rem; letter-spacing: 4px; text-transform: uppercase;
+      color: var(--cyan); margin-bottom: 30px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .panel-label::before { content: ''; display: block; width: 20px; height: 1px; background: var(--cyan); }
+
+    /* DROP ZONE */
+    .drop-zone {
+      border: 1px dashed rgba(0,180,255,0.3);
+      padding: 60px 40px;
+      text-align: center;
+      cursor: none;
+      transition: border-color 0.3s, background 0.3s;
+      position: relative;
+      margin-bottom: 30px;
+    }
+    .drop-zone:hover, .drop-zone.active {
+      border-color: var(--cyan);
+      background: var(--cyan-dim);
+    }
+    .drop-zone.active .drop-icon { transform: scale(1.1); }
+
+    .drop-icon {
+      font-size: 2.5rem; margin-bottom: 16px;
+      display: block; transition: transform 0.3s;
+    }
+    .drop-title {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.85rem; font-weight: 700;
+      letter-spacing: 1px; margin-bottom: 8px;
+    }
+    .drop-sub { font-size: 0.78rem; color: var(--muted); }
+    .drop-input { display: none; }
+
+    /* Preview */
+    .preview-area {
+      display: none; text-align: center; margin-bottom: 30px;
+      position: relative;
+    }
+    .preview-area.show { display: block; }
+    .preview-img {
+      max-width: 100%; max-height: 260px;
+      border: 1px solid var(--border);
+      display: block; margin: 0 auto;
+    }
+    .preview-label {
+      margin-top: 12px;
+      font-size: 0.7rem; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .preview-change {
+      margin-top: 10px;
+      font-size: 0.7rem; color: var(--cyan);
+      cursor: none; text-decoration: underline;
+      background: none; border: none; font-family: inherit;
+    }
+
+    /* Submit */
+    .submit-btn {
+      width: 100%;
+      background: var(--cyan); color: #000;
+      border: none; font-family: 'Orbitron', monospace;
+      font-size: 0.78rem; font-weight: 700; letter-spacing: 2px;
+      padding: 18px 40px; text-transform: uppercase;
+      cursor: none;
+      clip-path: polygon(10px 0%, 100% 0%, calc(100% - 10px) 100%, 0% 100%);
+      transition: box-shadow 0.3s, opacity 0.3s;
+      position: relative; overflow: hidden;
+    }
+    .submit-btn:hover { box-shadow: 0 0 40px rgba(0,180,255,0.5); }
+    .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .submit-btn .btn-loader {
+      display: none; width: 16px; height: 16px;
+      border: 2px solid rgba(0,0,0,0.3); border-top-color: #000;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+      margin: 0 auto;
+    }
+    @keyframes spin { to{transform:rotate(360deg)} }
+    .submit-btn.loading .btn-text { display: none; }
+    .submit-btn.loading .btn-loader { display: block; }
+
+    /* RESULTS PANEL */
+    .results-panel {
+      display: flex; flex-direction: column; gap: 20px;
+      animation: fadeUp 0.7s 0.2s ease both;
+    }
+
+    /* Empty state */
+    .empty-state {
+      border: 1px solid var(--border); background: var(--card);
+      padding: 80px 40px; text-align: center;
+    }
+    .empty-icon { font-size: 3rem; margin-bottom: 20px; opacity: 0.4; display: block; }
+    .empty-title { font-family: 'Orbitron', monospace; font-size: 0.9rem; color: var(--muted); margin-bottom: 8px; }
+    .empty-sub { font-size: 0.78rem; color: var(--muted); opacity: 0.6; }
+
+    /* Result image */
+    .result-image-card {
+      border: 1px solid var(--border); background: var(--card); padding: 30px;
+    }
+    .result-img-wrap { position: relative; display: inline-block; width: 100%; }
+    .result-img { width: 100%; max-height: 300px; object-fit: contain; display: block; border: 1px solid var(--border); }
+    .result-img-label {
+      position: absolute; top: 10px; left: 10px;
+      background: rgba(2,8,18,0.85); border: 1px solid var(--border);
+      padding: 4px 12px;
+      font-size: 0.6rem; letter-spacing: 2px; text-transform: uppercase; color: var(--cyan);
+    }
+
+    /* Model result card */
+    .result-card {
+      border: 1px solid var(--border); background: var(--card);
+      padding: 34px; position: relative; overflow: hidden;
+    }
+    .result-card.stroke { border-color: rgba(255,56,96,0.4); }
+    .result-card.normal { border-color: rgba(0,229,160,0.4); }
+    .result-card::before {
+      content: ''; position: absolute;
+      top: 0; left: 0; bottom: 0; width: 3px;
+    }
+    .result-card.stroke::before { background: var(--red); }
+    .result-card.normal::before { background: var(--green); }
+
+    .result-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+    .result-model-name {
+      font-size: 0.6rem; letter-spacing: 3px; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 6px;
+    }
+    .result-verdict {
+      font-family: 'Orbitron', monospace; font-size: 1.4rem; font-weight: 900;
+    }
+    .result-verdict.stroke { color: var(--red); }
+    .result-verdict.normal { color: var(--green); }
+
+    .result-badge {
+      padding: 6px 14px;
+      font-size: 0.6rem; letter-spacing: 2px; text-transform: uppercase;
+      font-family: 'Orbitron', monospace;
+    }
+    .result-badge.stroke { background: rgba(255,56,96,0.1); border: 1px solid rgba(255,56,96,0.4); color: var(--red); }
+    .result-badge.normal { background: rgba(0,229,160,0.1); border: 1px solid rgba(0,229,160,0.4); color: var(--green); }
+
+    /* Confidence bar */
+    .conf-label { display: flex; justify-content: space-between; margin-bottom: 10px; }
+    .conf-text { font-size: 0.72rem; color: var(--muted); letter-spacing: 1px; }
+    .conf-pct {
+      font-family: 'Orbitron', monospace; font-size: 0.72rem;
+    }
+    .conf-pct.stroke { color: var(--red); }
+    .conf-pct.normal { color: var(--green); }
+    .conf-track { height: 4px; background: rgba(255,255,255,0.06); position: relative; overflow: hidden; }
+    .conf-fill {
+      height: 100%; width: 0;
+      animation: fillConf 1.5s 0.3s ease both;
+    }
+    .conf-fill.stroke { background: linear-gradient(90deg, rgba(255,56,96,0.5), var(--red)); }
+    .conf-fill.normal { background: linear-gradient(90deg, rgba(0,229,160,0.5), var(--green)); }
+    @keyframes fillConf { to { width: var(--conf-width); } }
+
+    /* Combined verdict */
+    .combined-card {
+      border: 1px solid var(--border); background: var(--surface);
+      padding: 30px 34px;
+      display: flex; align-items: center; gap: 24px;
+    }
+    .combined-icon { font-size: 2rem; flex-shrink: 0; }
+    .combined-label { font-size: 0.6rem; letter-spacing: 3px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+    .combined-text { font-family: 'Orbitron', monospace; font-size: 0.85rem; font-weight: 700; line-height: 1.4; }
+    .combined-text.agree { color: var(--green); }
+    .combined-text.disagree { color: #ffa726; }
+
+    body::after {
+      content: ''; position: fixed; inset: 0; z-index: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="cursor" id="cursor"></div>
+  <div class="cursor-ring" id="cursorRing"></div>
+  <div class="grid-bg"></div>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+
+  <nav>
+    <a class="nav-logo" href="/">CAROTID<span>AI</span></a>
+    <a class="nav-back" href="/">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M19 12H5M5 12l7-7M5 12l7 7"/>
+      </svg>
+      Back to Home
+    </a>
+  </nav>
+
+  <div class="page">
+
+    <div class="page-header">
+      <div class="page-tag">Neural Analysis Engine</div>
+      <h1>Upload & Analyze</h1>
+      <p>Upload a carotid artery ultrasound image. Both SVM and CNN models will independently analyze and classify it.</p>
+    </div>
+
+    <div class="main-grid">
+
+      <!-- UPLOAD PANEL -->
+      <div class="upload-panel">
+        <div class="panel-label">Image Input</div>
+
+        <form action="/predict" method="POST" enctype="multipart/form-data" id="uploadForm">
+          <div class="drop-zone" id="dropZone">
+            <span class="drop-icon">🩻</span>
+            <div class="drop-title">Drop Image Here</div>
+            <div class="drop-sub">or click to browse · JPG, PNG, BMP</div>
+            <input type="file" name="image" id="fileInput" class="drop-input" accept="image/*" required>
+          </div>
+
+          <div class="preview-area" id="previewArea">
+            <img src="" alt="Preview" class="preview-img" id="previewImg"/>
+            <div class="preview-label" id="previewName">filename.jpg</div>
+            <button type="button" class="preview-change" id="changeBtn">Change image</button>
+          </div>
+
+          <button type="submit" class="submit-btn" id="submitBtn" disabled>
+            <span class="btn-text">Run Analysis</span>
+            <div class="btn-loader"></div>
+          </button>
+        </form>
+      </div>
+
+      <!-- RESULTS PANEL -->
+      <div class="results-panel">
+
+        {% if image_path %}
+
+        <!-- Uploaded Image -->
+        <div class="result-image-card">
+          <div class="panel-label" style="margin-bottom:20px">Analyzed Image</div>
+          <div class="result-img-wrap">
+            <img src="/{{ image_path }}" alt="Analyzed" class="result-img"/>
+            <span class="result-img-label">Input Image</span>
+          </div>
+        </div>
+
+        <!-- SVM Result -->
+        <div class="result-card {{ 'stroke' if svm_label == 'Stroke' else 'normal' }}">
+          <div class="result-header">
+            <div>
+              <div class="result-model-name">Model 01 — SVM + GLCM</div>
+              <div class="result-verdict {{ 'stroke' if svm_label == 'Stroke' else 'normal' }}">
+                {{ svm_label | upper }}
+              </div>
+            </div>
+            <div class="result-badge {{ 'stroke' if svm_label == 'Stroke' else 'normal' }}">
+              {{ 'HIGH RISK' if svm_label == 'Stroke' else 'LOW RISK' }}
+            </div>
+          </div>
+          <div class="conf-label">
+            <span class="conf-text">Confidence Score</span>
+            <span class="conf-pct {{ 'stroke' if svm_label == 'Stroke' else 'normal' }}">{{ svm_conf }}%</span>
+          </div>
+          <div class="conf-track">
+            <div class="conf-fill {{ 'stroke' if svm_label == 'Stroke' else 'normal' }}"
+                 style="--conf-width: {{ [svm_conf, 100] | min }}%"></div>
+          </div>
+        </div>
+
+        <!-- CNN Result -->
+        <div class="result-card {{ 'stroke' if cnn_label == 'Stroke' else 'normal' }}">
+          <div class="result-header">
+            <div>
+              <div class="result-model-name">Model 02 — VGG19 CNN</div>
+              <div class="result-verdict {{ 'stroke' if cnn_label == 'Stroke' else 'normal' }}">
+                {{ cnn_label | upper }}
+              </div>
+            </div>
+            <div class="result-badge {{ 'stroke' if cnn_label == 'Stroke' else 'normal' }}">
+              {{ 'HIGH RISK' if cnn_label == 'Stroke' else 'LOW RISK' }}
+            </div>
+          </div>
+          <div class="conf-label">
+            <span class="conf-text">Confidence Score</span>
+            <span class="conf-pct {{ 'stroke' if cnn_label == 'Stroke' else 'normal' }}">{{ cnn_conf }}%</span>
+          </div>
+          <div class="conf-track">
+            <div class="conf-fill {{ 'stroke' if cnn_label == 'Stroke' else 'normal' }}"
+                 style="--conf-width: {{ [cnn_conf, 100] | min }}%"></div>
+          </div>
+        </div>
+
+        <!-- Combined verdict -->
+        {% if svm_label == cnn_label %}
+        <div class="combined-card">
+          <span class="combined-icon">{{ '⚠️' if svm_label == 'Stroke' else '✅' }}</span>
+          <div>
+            <div class="combined-label">Combined Verdict — Both Models Agree</div>
+            <div class="combined-text agree">
+              {{ 'STROKE RISK DETECTED — Consult a medical professional immediately.' if svm_label == 'Stroke' else 'NO STROKE RISK DETECTED — Continue routine monitoring.' }}
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <div class="combined-card">
+          <span class="combined-icon">🔄</span>
+          <div>
+            <div class="combined-label">Combined Verdict — Models Disagree</div>
+            <div class="combined-text disagree">INCONCLUSIVE — Further clinical review recommended.</div>
+          </div>
+        </div>
+        {% endif %}
+
+        {% else %}
+
+        <!-- Empty State -->
+        <div class="empty-state">
+          <span class="empty-icon">📡</span>
+          <div class="empty-title">Awaiting Image Input</div>
+          <div class="empty-sub">Upload an ultrasound image to begin analysis</div>
+        </div>
+
+        {% endif %}
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Cursor
+    const cursor = document.getElementById('cursor');
+    const ring = document.getElementById('cursorRing');
+    let mx=0,my=0,rx=0,ry=0;
+    document.addEventListener('mousemove', e => { mx=e.clientX; my=e.clientY; });
+    function animCursor() {
+      cursor.style.left=mx+'px'; cursor.style.top=my+'px';
+      rx+=(mx-rx)*0.12; ry+=(my-ry)*0.12;
+      ring.style.left=rx+'px'; ring.style.top=ry+'px';
+      requestAnimationFrame(animCursor);
+    }
+    animCursor();
+
+    // File upload interactions
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const previewArea = document.getElementById('previewArea');
+    const previewImg = document.getElementById('previewImg');
+    const previewName = document.getElementById('previewName');
+    const submitBtn = document.getElementById('submitBtn');
+    const changeBtn = document.getElementById('changeBtn');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    changeBtn.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('active'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('active'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault(); dropZone.classList.remove('active');
+      if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+    });
+
+    fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
+
+    function handleFile(file) {
+      const reader = new FileReader();
+      reader.onload = e => {
+        previewImg.src = e.target.result;
+        previewName.textContent = file.name;
+        dropZone.style.display = 'none';
+        previewArea.classList.add('show');
+        submitBtn.disabled = false;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // Loading state on submit
+    document.getElementById('uploadForm').addEventListener('submit', () => {
+      submitBtn.classList.add('loading');
+      submitBtn.disabled = true;
+    });
+  </script>
+</body>
+</html>
